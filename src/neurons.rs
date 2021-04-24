@@ -1,3 +1,5 @@
+use rand::Rng;
+
 #[derive(Clone)]
 struct Neuron {
     value: f64,
@@ -13,7 +15,7 @@ impl Neuron {
         for connection in self.connections.iter() {
             sum += connection.left_neuron.value as f64 * connection.weight as f64;
         }
-        sum + self.bias as f64
+        sum 
     }
 }
 
@@ -28,26 +30,44 @@ struct Layer {
     neurons: Vec<Neuron>,
 }
 
-struct Network {
+pub struct Network {
     layers: Vec<Layer>,
+
 }
 
+pub fn construct_network() -> Network{
+        Network{
+            layers: vec![]
+        } 
+    }
 impl Network {
-    fn fit_data(&mut self, data: Vec<f64>) {
+
+    pub fn fit_data(&mut self, data: Vec<f64>) {
         // for each data point create new
         // neuron, and push it in vector
+        let mut layer = Layer{
+                neurons: vec![]
+            };
         for i in data.iter() {
             let neuron = Neuron {
                 value: *i,
-                bias: 0.1,
+                bias: rand::thread_rng().gen_range(0.1..0.4),
                 connections: vec![],
                 activation_function: "tanh".to_string(),
             };
-            self.layers[0].neurons.push(neuron);
+            layer.neurons.push(neuron);
         }
+        self.layers.push(layer);
+    }
+    pub fn get_output(&self)-> Vec<f64>{
+        let mut output: Vec<f64> = vec![];
+        for neuron in self.layers.last().unwrap().neurons.clone(){
+            output.push(neuron.value);
+        }; 
+        output
     }
 
-    fn create_layer(&mut self, num_of_neurons: i64) {
+    pub fn create_layer(&mut self, num_of_neurons: i64) {
         let mut neurons = vec![];
         for _ in 0..num_of_neurons {
             //  create vector of connections between last layer neurons and current neuron
@@ -56,14 +76,14 @@ impl Network {
             for neuron in last_layer.iter() {
                 let connection = Connection {
                     left_neuron: neuron.clone(),
-                    weight: 0.5,
+                    weight: rand::thread_rng().gen_range(0.1..0.5),
                 };
                 connections.push(connection);
             }
 
             let mut neuron = Neuron {
                 value: 0.0,
-                bias: 0.1,
+                bias: rand::thread_rng().gen_range(0.1..0.5),
                 connections,
                 activation_function: "tanh".to_string(),
             };
@@ -73,12 +93,10 @@ impl Network {
         }
 
         let layer = Layer { neurons };
-        self.layers.push(layer)
-    }
-
+        self.layers.push(layer) } 
     // https://brilliant.org/wiki/backpropagation/#the-backpropagation-algorithm
-    fn back_propogation(&self, target_values: Vec<f64>) {
-        const LEARINING_RATE: f64 = 0.3;
+    pub fn back_propogation(&self, target_values: Vec<f64>) {
+        const LEARINING_RATE: f64 = 0.01;
 
         // let squared_error = |target: f64, output: f64| -> f64 { (target - output).sqrt() / 2.0 };
 
@@ -95,18 +113,28 @@ impl Network {
             let neurons = layer.neurons.clone();
             let mut layer_deltas: Vec<f64> = Vec::new();
 
-            // last layer connections calculation
             for (j, neuron) in neurons.iter().enumerate() {
                 // derevative of tanh
-                let sech_sqrt = |x: f64| -> f64 {
+                let sigmoid = |x: f64| -> f64{
+                    let e = std::f64::consts::E;
+                    1.0/1.0+e.powf(-x)
+                };
+
+                let dsigmoid = |x: f64|->f64{
+                    sigmoid(x) * (1.0-sigmoid(x))
+                };
+
+                let dtanh = |x: f64| -> f64 {
                     let e = std::f64::consts::E;
                     // sech^2(x)
                     4.0 / (e.powf(-x) + e.powf(x)).sqrt()
                 };
                 if i == 0 {
                     let delta: f64 =
-                        (neuron.value - target_values[i]) * sech_sqrt(neuron.calculate());
+                        (neuron.value - target_values[i]) * dsigmoid(neuron.calculate());
                     layer_deltas.push(delta);
+                    println!("{} - delta in final layer", delta);
+
                 } else {
                     fn burger(
                         mut sum: f64,
@@ -122,10 +150,11 @@ impl Network {
                         sum
                     }
 
-                    let delta: f64 = sech_sqrt(neuron.calculate())
+                    let delta: f64 = dsigmoid(neuron.calculate())
                         * burger(0.0, neuron.clone(), deltas.clone(), i);
                     layer_deltas.push(delta);
                 }
+
                 deltas.push(layer_deltas.clone());
                 for connection in neuron.connections.clone() {
                     // w_k_i_j: weight for node j in layer k for incoming node i
@@ -137,6 +166,7 @@ impl Network {
                     // in final layer
                     // dE/dw_m_i_j = d_m_j * o_m-1_i =
                     // = (output - target)g'(a_m_1)*o_m-1_i
+                    // dE/db_m_i_j
                     // FOR FINAL LAYER
                     let final_gradient: f64 =
                         layer_deltas.clone()[j] * connection.left_neuron.value;
